@@ -2,16 +2,14 @@
 /*jshint esversion: 6 */
 
 var express = require('express');
-var bcrypt = require('bcryptjs');
-var jwt = require('jsonwebtoken');
 
 var mdAutenticacion = require('../middlewares/autenticacion');
 
 var app = express();
-var Usuario = require('../models/usuario');
+var Hospital = require('../models/hospital');
 
 // ===========================================
-// Obterner todos los usuarios
+// Obterner todos los hospitales
 // ===========================================
 
 app.get('/', (req, res, next) => {
@@ -19,85 +17,82 @@ app.get('/', (req, res, next) => {
     var desde = req.query.desde || 0;
     desde = Number(desde);
 
-    Usuario.find({}, 'nombre email img role')
+    // Si no ponemos nada en el find({}) recupera toda la ingormación.
+    Hospital.find({})
         .skip(desde)
-        .limit(5)        
+        .limit(5)     
+        .populate('usuario' , 'nombre email') // No pongo password porque no la quiero recibir en el JSON
         .exec (   
-            (err, usuarios) => {
+            (err, hospitales) => {
 
             if ( err ) {
                 return res.status(500).json ({
                     ok: false,
-                    mensaje: 'Error recuperando usuarios',
+                    mensaje: 'Error recuperando hospitales',
                     errors: err,
                 });
             }
 
-            Usuario.count({}, (err, conteo) => {
+            Hospital.count({}, (err, conteo) => {
                 res.status(200).json({
                     ok: true,
-                    usuarios: usuarios,
+                    hospitales: hospitales,
                     total: conteo
                 }); 
-            
-            });
-        });
+
+            });             
+
+    });
 
 });
 
 // ===========================================
-// Actualizar usuario
+// Actualizar hospital
 // ===========================================
 // Normalmente se usa put o patch (ambos indistintamente)
-// Esto ":id" indica que es necesario mandar un id
+// Este ":id" indica que es necesario mandar un id
 app.put('/:id', mdAutenticacion.verificaToken, (req, res) => {
 
     var id = req.params.id;
     var body = req.body;
 
-    Usuario.findById( id, (err, usuario) => {
+    Hospital.findById( id, (err, hospital) => {
 
         // Este sería un error de acceso a B.D.
         if ( err ) {
             return res.status(500).json ({
                 ok: false,
-                mensaje: 'Error al buscar usuario',
+                mensaje: 'Error al buscar hospital',
                 errors: err
             });
         }
 
-        // Este sería el error si no localiza el usuario
-        if ( !usuario ){
+        // Este sería el error si no localiza el hospital
+        if ( !hospital ){
             return res.status(400).json ({
                 ok: false,
-                mensaje: 'El usuario con el id' + id + 'no existe',
-                errors: { message: 'No existe un usuario con ese id'}
+                mensaje: 'El hospital con el id' + id + ' no existe',
+                errors: { message: 'No existe un hospital con ese id'}
             });
         }
 
-        usuario.nombre = body.nombre;
-        usuario.email = body.email;
-        usuario.role = body.role;
+        hospital.nombre = body.nombre;
+        hospital.usuario = req.usuario._id;
 
-        usuario.save( (err, usuarioGuardado) => {
+        hospital.save( (err, hospitalGuardado) => {
             // Error al guardar
             if ( err ) {
                 return res.status(400).json ({
                     ok: false,
-                    mensaje: 'Error al actualizar usuario',
+                    mensaje: 'Error al actualizar hospital',
                     errors: err
                 });
             }  
-            
-            // Esto no se guarda porque estoy pasando el "save". 
-            // Al ser dentro del callback devuelve ';)' para que
-            // no se vea la clave en el json devuelto
-            usuarioGuardado.password = ';)';
 
-            // Si no sucede ningún error devolvemos ok:true y el usuario guardado
+            // Si no sucede ningún error devolvemos true y el hospital actualizado
             res.status(200).json({
                 ok: true,
-                usuario: usuarioGuardado
+                hospital: hospitalGuardado
             });                      
         });
 
@@ -106,76 +101,71 @@ app.put('/:id', mdAutenticacion.verificaToken, (req, res) => {
 });
 
 // ===========================================
-// Crear un nuevo usuario
+// Crear un nuevo hospital
 // ===========================================
 
-app.post('/', mdAutenticacion.verificaToken, (req, res) => {
+app.post('/:id', mdAutenticacion.verificaToken, (req, res) => {
 
     // Extraemos el body
     var body = req.body;
 
-    // Usuario es del modelo de mongoose (usuarios.js)
-    var usuario = new Usuario({
+    // Hospital es del modelo de mongoose (hospital.js)
+    var hospital = new Hospital({
         nombre: body.nombre,
-        email: body.email,
-        password: bcrypt.hashSync(body.password, 10),
-        img: body.img,
-        role: body.role
-    });
+        usuario: req.usuario._id
+     });
 
-    // Guardamos el usuario y si hay error lo devolvemos
-    usuario.save( ( err, usuarioGuardado ) => {
+    // Guardamos el hospital y si hay error lo devolvemos
+    hospital.save( ( err, hospitalGuardado ) => {
 
         if ( err ) {
             return res.status(400).json ({
                 ok: false,
-                mensaje: 'Error al crear usuario',
+                mensaje: 'Error al crear hospital',
                 errors: err
             });
         }
 
-        // Si no sucede ningún error devolvemos ok:true y el usuario guardado
+        // Si no sucede ningún error devolvemos ok:true y el hospital guardado
         res.status(201).json({
             ok: true,
-            usuario: usuarioGuardado,
-            usuarioToken: req.usuario
+            hospital: hospitalGuardado
         });
 
     });
 
-
 });
 
 // ===========================================
-// Borrar un usuario mediante el id
+// Borrar un hospital mediante el id
 // ===========================================
 app.delete('/:id', mdAutenticacion.verificaToken, (req, res) => {
 
     var id = req.params.id;
 
-    Usuario.findByIdAndRemove(id, (err, usuarioBorrado) => {
+    Hospital.findByIdAndRemove(id, (err, hospitalBorrado) => {
     
         // Error serio de base de datos
         if ( err ) {
             return res.status(500).json ({
                 ok: false,
-                mensaje: '[ERROR] Error al borrar usuario',
+                mensaje: '[ERROR] Error al borrar hospital',
                 errors: err
             });
         }
 
-        if ( !usuarioBorrado ) {
+        if ( !hospitalBorrado ) {
             return res.status(400).json ({
                 ok: false,
-                mensaje: 'No existe un usuario con ese id',
-                errors: {message: 'No existe un usuario con ese id'}
+                mensaje: 'No existe un hospital con ese id',
+                errors: {message: 'No existe un hospital con ese id'}
             });
         }
 
-        // Cuando lo borra bien devuelve el usurio borrado
+        // Cuando lo borra bien devuelve el hospital borrado
         res.status(200).json({
             ok: true,
-            usuario: usuarioBorrado
+            hospital: hospitalBorrado
         });        
 
     });

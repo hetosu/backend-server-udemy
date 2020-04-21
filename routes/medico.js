@@ -2,16 +2,14 @@
 /*jshint esversion: 6 */
 
 var express = require('express');
-var bcrypt = require('bcryptjs');
-var jwt = require('jsonwebtoken');
 
 var mdAutenticacion = require('../middlewares/autenticacion');
 
 var app = express();
-var Usuario = require('../models/usuario');
+var Medico = require('../models/medico');
 
 // ===========================================
-// Obterner todos los usuarios
+// Obterner todos los médicos
 // ===========================================
 
 app.get('/', (req, res, next) => {
@@ -19,85 +17,82 @@ app.get('/', (req, res, next) => {
     var desde = req.query.desde || 0;
     desde = Number(desde);
 
-    Usuario.find({}, 'nombre email img role')
+    Medico.find({})
         .skip(desde)
-        .limit(5)        
+        .limit(5)       
+        .populate('usuario', 'nombre email')
+        .populate('hospital')
         .exec (   
-            (err, usuarios) => {
+            (err, medicos) => {
 
             if ( err ) {
                 return res.status(500).json ({
                     ok: false,
-                    mensaje: 'Error recuperando usuarios',
+                    mensaje: 'Error recuperando médicos',
                     errors: err,
                 });
-            }
+             }
 
-            Usuario.count({}, (err, conteo) => {
+             Medico.count({}, (err, conteo) => {
                 res.status(200).json({
                     ok: true,
-                    usuarios: usuarios,
+                    medicos: medicos,
                     total: conteo
                 }); 
-            
             });
-        });
+
+    });
 
 });
 
 // ===========================================
-// Actualizar usuario
+// Actualizar médico
 // ===========================================
-// Normalmente se usa put o patch (ambos indistintamente)
-// Esto ":id" indica que es necesario mandar un id
+// Normalmemtne se usa put o patch (ambos indistintamente)
+// Este ":id" indica que es necesario mandar un id
 app.put('/:id', mdAutenticacion.verificaToken, (req, res) => {
 
     var id = req.params.id;
     var body = req.body;
 
-    Usuario.findById( id, (err, usuario) => {
+    Medico.findById( id, (err, medico) => {
 
         // Este sería un error de acceso a B.D.
         if ( err ) {
             return res.status(500).json ({
                 ok: false,
-                mensaje: 'Error al buscar usuario',
+                mensaje: 'Error al buscar médico',
                 errors: err
             });
         }
 
-        // Este sería el error si no localiza el usuario
-        if ( !usuario ){
+        // Este sería el error si no localiza el médico
+        if ( !medico ){
             return res.status(400).json ({
                 ok: false,
-                mensaje: 'El usuario con el id' + id + 'no existe',
-                errors: { message: 'No existe un usuario con ese id'}
+                mensaje: 'El médico con el id' + id + ' no existe',
+                errors: { message: 'No existe un médico con ese id'}
             });
         }
 
-        usuario.nombre = body.nombre;
-        usuario.email = body.email;
-        usuario.role = body.role;
+        medico.nombre = body.nombre;
+        medico.usuario = req.usuario._id;
+        medico.hospital = body.hospital;
 
-        usuario.save( (err, usuarioGuardado) => {
+        medico.save( (err, medicoGuardado) => {
             // Error al guardar
             if ( err ) {
                 return res.status(400).json ({
                     ok: false,
-                    mensaje: 'Error al actualizar usuario',
+                    mensaje: 'Error al actualizar medico',
                     errors: err
                 });
             }  
-            
-            // Esto no se guarda porque estoy pasando el "save". 
-            // Al ser dentro del callback devuelve ';)' para que
-            // no se vea la clave en el json devuelto
-            usuarioGuardado.password = ';)';
 
-            // Si no sucede ningún error devolvemos ok:true y el usuario guardado
+            // Si no sucede ningún error devolvemos true y el medico actualizado
             res.status(200).json({
                 ok: true,
-                usuario: usuarioGuardado
+                medico: medicoGuardado
             });                      
         });
 
@@ -106,7 +101,7 @@ app.put('/:id', mdAutenticacion.verificaToken, (req, res) => {
 });
 
 // ===========================================
-// Crear un nuevo usuario
+// Crear un nuevo médico
 // ===========================================
 
 app.post('/', mdAutenticacion.verificaToken, (req, res) => {
@@ -114,68 +109,64 @@ app.post('/', mdAutenticacion.verificaToken, (req, res) => {
     // Extraemos el body
     var body = req.body;
 
-    // Usuario es del modelo de mongoose (usuarios.js)
-    var usuario = new Usuario({
+    // "Medico" es del modelo de mongoose (medico.js)
+    var medico = new Medico({
         nombre: body.nombre,
-        email: body.email,
-        password: bcrypt.hashSync(body.password, 10),
-        img: body.img,
-        role: body.role
-    });
+        usuario: req.usuario._id,
+        hospital: body.hospital,
+     });
 
-    // Guardamos el usuario y si hay error lo devolvemos
-    usuario.save( ( err, usuarioGuardado ) => {
+    // Guardamos el médico y si hay error lo devolvemos
+    medico.save( ( err, medicoGuardado ) => {
 
         if ( err ) {
             return res.status(400).json ({
                 ok: false,
-                mensaje: 'Error al crear usuario',
+                mensaje: 'Error al crear medico',
                 errors: err
             });
         }
 
-        // Si no sucede ningún error devolvemos ok:true y el usuario guardado
+        // Si no sucede ningún error devolvemos ok:true y el medico guardado
         res.status(201).json({
             ok: true,
-            usuario: usuarioGuardado,
-            usuarioToken: req.usuario
+            medico: medicoGuardado
         });
 
     });
 
-
 });
 
 // ===========================================
-// Borrar un usuario mediante el id
+// Borrar un medico mediante el id
 // ===========================================
 app.delete('/:id', mdAutenticacion.verificaToken, (req, res) => {
 
     var id = req.params.id;
 
-    Usuario.findByIdAndRemove(id, (err, usuarioBorrado) => {
+    Medico.findByIdAndRemove(id, (err, medicoBorrado) => {
     
         // Error serio de base de datos
         if ( err ) {
             return res.status(500).json ({
                 ok: false,
-                mensaje: '[ERROR] Error al borrar usuario',
+                mensaje: '[ERROR] Error al borrar medico',
                 errors: err
             });
         }
 
-        if ( !usuarioBorrado ) {
+        if ( !medicoBorrado ) {
             return res.status(400).json ({
                 ok: false,
-                mensaje: 'No existe un usuario con ese id',
-                errors: {message: 'No existe un usuario con ese id'}
+                mensaje: 'No existe un medico con ese id',
+                errors: {message: 'No existe un medico con ese id'}
             });
         }
 
-        // Cuando lo borra bien devuelve el usurio borrado
+        // Cuando lo borra bien devuelve el medico borrado
         res.status(200).json({
             ok: true,
-            usuario: usuarioBorrado
+            medico: medicoBorrado
         });        
 
     });
